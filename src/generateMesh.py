@@ -132,7 +132,11 @@ def generateMesh(model, showGmshMesh=False,showGmshGeometryBeforeMeshing = False
 
     #assemble 2D elements for line load
     loadsList = model.loads
-    loadsList = _getLineLoadForces(gmshModel, loadsList,gmshToCoherentNodesNumeration,nodesArrayPd)
+    loadsList = _getLineLoadForces(
+        gmshModel, loadsList, 
+        gmshToCoherentNodesNumeration, 
+        nodesArrayPd
+    )
 
     #generate BCs and nodes directions by iterating over wall segments
     wallList = model.walls
@@ -143,14 +147,23 @@ def generateMesh(model, showGmshMesh=False,showGmshGeometryBeforeMeshing = False
     nextNode = int(np.max(nodeTagsModel)+1)
     downStandBeamsList = model.downStandBeams
     myPlate = model.plates[0]
-    downStandBeamsList, gmshToCoherentNodesNumeration,nodesArray,nodesArrayPd,nodesRotationsPd =\
-    _createNewNodesForDownStandBeams(gmshModel,nodesArray,nodesArrayPd,nodesRotationsPd,downStandBeamsList,gmshToCoherentNodesNumeration,nextNode)
-    downStandBeamsList, AmatList, elementsList,nodesRotationsPd = \
-    _getDownStandBeamsElements(gmshModel,nodesRotationsPd,nodesArray,elementsList,\
-    downStandBeamsList,elementType,myPlate,gmshToCoherentNodesNumeration,nodesArrayPd)
+    downStandBeamsList, gmshToCoherentNodesNumeration, nodesArray, nodesArrayPd, nodesRotationsPd =\
+    _createNewNodesForDownStandBeams(
+        gmshModel, nodesArray, nodesArrayPd, nodesRotationsPd, 
+        downStandBeamsList, gmshToCoherentNodesNumeration,nextNode
+    )
+    downStandBeamsList, AmatList, elementsList,nodesRotationsPd = _getDownStandBeamsElements(
+        gmshModel, nodesRotationsPd, nodesArray, elementsList,
+        downStandBeamsList, elementType, myPlate, gmshToCoherentNodesNumeration, nodesArrayPd
+    )
 
     # Store everything into the mesh object
-    model.mesh = _Mesh(nodesArrayPd,nodesRotationsPd, elementsList, BCs, AmatList, plateElementsList, getElementByTagDictionary,elasticallySupportedNodes)
+    model.mesh = _Mesh(
+        nodesArrayPd, nodesRotationsPd, elementsList, 
+        BCs, AmatList, plateElementsList, 
+        getElementByTagDictionary, elasticallySupportedNodes
+    )
+
 
 def setMesh(model, nodesArray, elements, BCs,elementDefinition = None, load = None):
 
@@ -285,40 +298,46 @@ def _getElementsList(gmshModel, platesList, elementType,
 
     return elementsList, getElementByTagDictionary
 
+
 def _getLineLoadForces(gmshModel, loadsList, gmshToCoherentNodesNumeration, nodesArrayPd):
 
-    ''' Creates a list of all elements objects of the model.\n
-        Input: \n
-            * gmshModel: model object of the gmsh library. \n
-            * loadsList: List of load objects. \n
-            * gmshToCoherentNodesNumeration: Pandas dataframe where the indexes are the node tags assigned by gmsh, the values are an array from 0 to nNodes-1. \n
-            * nodesArrayPd: Pandas Dataframe where the indexes are the node tags assigned by gmsh, the values are a nNodes x 3 array with the x-y-z coordinates. \n
-        Return: \n
-            * loadsList: list of all load objects of the model.
+    ''' 
+    Creates a list of all elements objects of the model.
+    Input:
+        * gmshModel: model object of the gmsh library. 
+        * loadsList: List of load objects.
+        * gmshToCoherentNodesNumeration: Pandas dataframe where the indexes are the 
+                                         node tags assigned by gmsh, the values are an 
+                                         array from 0 to nNodes-1.
+        * nodesArrayPd: Pandas Dataframe where the indexes are the node tags assigned 
+                        by gmsh, the values are a nNodes x 3 array with the x-y-z coordinates.
+    Return:
+        * loadsList: list of all load objects of the model.
     '''
 
     for p in loadsList:
         if p.case == 'line':
             tags = gmshModel.getEntitiesForPhysicalGroup(p.physicalGroup[0],p.physicalGroup[1])
-            _, elementTags, nodeTags = gmshModel.mesh.getElements(1,tags[0])   
-            elements1DList = []
+            elementTags, nodeTags = gmshModel.mesh.getElements(1, tags[0])[1:3]
+            elements1DList = list()
             for elemTag in elementTags[0]:
-                elementType, nodeTags = gmshModel.mesh.getElement(elemTag)
+                nodeTags = gmshModel.mesh.getElement(elemTag)[1]
                 newElement = _Element()
                 newElement.tag = elemTag
                 newElement.nNodes  = len(nodeTags)
                 newElement.connectivity  = nodeTags
                 newElement.coherentConnectivity = gmshToCoherentNodesNumeration.loc[nodeTags]
                 newElement.coordinates = nodesArrayPd.loc[nodeTags].to_numpy()
-                newElement.whichPlate  = 1  
+                newElement.whichPlate = 1  
                 elements1DList.append(newElement)
             p.elements1DList = elements1DList
         elif p.case == 'point':
             tags = gmshModel.getEntitiesForPhysicalGroup(p.physicalGroup[0],p.physicalGroup[1])
-            _, elementTags, nodeTags = gmshModel.mesh.getElements(0,tags[0])   
+            elementTags, nodeTags = gmshModel.mesh.getElements(0,tags[0])[1:3]  
             p.pointLoadNode = nodeTags[0]
 
     return loadsList
+
 
 def _getBCsArray(gmshModel,wallList,columnsList,nodesRotationsPd,deactivateRotation):
 
@@ -429,6 +448,7 @@ def _createNewNodesForDownStandBeams(gmshModel,nodesArray,nodesArrayPd,
 
     return (downStandBeamsList, gmshToCoherentNodesNumeration,
             nodesArray, nodesArrayPd, nodesRotationsPd)
+
 
 def _getDownStandBeamsElements(gmshModel, nodesRotationsPd, nodesArray, elementsList, 
                                downStandBeamsList, elementType, myPlate, 
@@ -619,36 +639,37 @@ class _Element:
 
     '''
         Stores all information regarding an element
-        Atributes: \n
-            * tag: tag automatically attributed by gmsh. \n
-            * shape: number of nodes.\n
-            * nNodes: number of nodes.\n
-            * connectivity: node tags defining the element.\n
-            * coordinates: x-y-z coordinates of the nodes. \n
-            * whichPlate: to which plate belogs the element. \n
-            * BbMat: Bending train matrix.\n
-            * rotationMatrix: \n
-            * coherentConnectivity: coherent node tags. \n
-            * type: "DB" or "MITC". \n
-            * integration: "R" for reduced, "N" for normal Gauss quadrature. \n
-            * correspondingPlateElements: \n
-            * Db: Bending material matrix, coming from the plate object. \n
-            * Ds: Shear material matrix, coming from the plate object. \n
+        Atributes: 
+            * tag: tag automatically attributed by gmsh. 
+            * shape: number of nodes.
+            * nNodes: number of nodes.
+            * connectivity: node tags defining the element.
+            * coordinates: x-y-z coordinates of the nodes. 
+            * whichPlate: to which plate belogs the element. 
+            * BbMat: Bending train matrix.
+            * rotationMatrix: 
+            * coherentConnectivity: coherent node tags. 
+            * type: "DB" or "MITC". 
+            * integration: "R" for reduced, "N" for normal Gauss quadrature. 
+            * correspondingPlateElements: 
+            * Db: Bending material matrix, coming from the plate object. 
+            * Ds: Shear material matrix, coming from the plate object. 
     '''
     
     def __init__(self):
-        self.tag  = None
-        self.shape = None
-        self.nNodes  = None
-        self.connectivity  = None
-        self.coordinates  = None
-        self.whichPlate  = None
-        self.BbMat = None
-        self.rotationMatrix = None
-        self.coherentConnectivity = None #rearranges nodes with a sequential nummeration
-        self.type = None
-        self.integration = None
-        self.correspondingPlateElements = None
-        self.Db = None
-        self.Ds = None
+         
+        self.tag: int | None = None
+        self.shape: int | None = None
+        self.nNodes: int | None = None
+        self.connectivity: np.ndarray | None = None
+        self.coordinates: np.ndarray | None = None
+        self.whichPlate: int | None = None
+        self.BbMat: np.ndarray | None = None
+        self.rotationMatrix: np.ndarray | None = None
+        self.coherentConnectivity: np.ndarray | None = None # rearranges nodes with a sequential nummeration
+        self.type: str | None = None
+        self.integration: str | None = None
+        self.correspondingPlateElements: None = None
+        self.Db: np.ndarray | None = None
+        self.Ds: np.ndarray | None = None
 

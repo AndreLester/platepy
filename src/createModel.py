@@ -9,9 +9,12 @@ import numpy as np
 import gmsh # To create CAD model and mesh
 
 class PlateModel:   
+
     '''
-    A PlateModel object is used as basis for the calculation of FE-model. Is used to store structural elements, mesh and results.
+    A PlateModel object is used as basis for the calculation of FE-model. 
+    It is used to store structural elements, mesh and results.
     '''
+
     def __init__(self):
         gmsh.initialize()
         gmsh.model.remove()
@@ -26,7 +29,10 @@ class PlateModel:
         self.mesh = None
         self.resultsInformation = None
         self.axes = {}
+
+
     def addPlate(self, newPlate):  
+
         '''
         Add a plate object to the plateModel.
 
@@ -37,6 +43,7 @@ class PlateModel:
         **newPlate**: `Plate` object to be added.
 
         '''
+
         self.plates.append(newPlate)
 
         # Create points in the Gmsh model
@@ -64,7 +71,9 @@ class PlateModel:
         gmsh.model.geo.removeAllDuplicates()
         gmsh.model.geo.synchronize()
 
+
     def addWall(self, newWall):
+
         '''
         Add a wall to the plateModel. 
 
@@ -75,6 +84,7 @@ class PlateModel:
         **newWall**: `Wall` object to be added. 
 
         '''
+
         self.walls.append(newWall)
         
         # Create points in the Gmsh model
@@ -106,7 +116,9 @@ class PlateModel:
                 gmsh.model.mesh.embed(1, [line], 2, 1) 
         gmsh.model.geo.synchronize()
 
+
     def addDownStandBeam(self, newDSB):
+
         '''
         Add a downstand beam to the plateModel. 
 
@@ -117,6 +129,7 @@ class PlateModel:
         **newDSB**: `DownStandBeam` object to be added. 
 
         '''
+
         self.downStandBeams.append(newDSB)
         
         # Create points in the Gmsh model
@@ -146,7 +159,9 @@ class PlateModel:
             if line in entities[:,1]:
                 gmsh.model.mesh.embed(1, [line], 2, 1) 
 
+    
     def addColumn(self, newColumn):
+
         '''
         Add a column to the plateModel. 
 
@@ -157,6 +172,7 @@ class PlateModel:
         **newColumn**: `Column` object to be added.
 
         '''
+
         self.columns.append(newColumn)
 
         # Create points in the Gmsh model
@@ -184,7 +200,9 @@ class PlateModel:
             # gmsh.model.mesh.embed(0, pointTags, 1, 3)
             # gmsh.model.geo.synchronize()
 
+    
     def addLoad(self, newLoad):
+
         '''
         Add a load to the plateModel.
 
@@ -195,10 +213,12 @@ class PlateModel:
         **newLoad**: `Load` object to be added.
 
         '''
+
         self.loads.append(newLoad)
         
         if newLoad.case =='area':
             pass # in this case the force is by default applied in the solve module
+
         elif newLoad.case == 'line':
             nPoints = len(newLoad.outlineCoords)
             pointTags = [0]*nPoints
@@ -220,8 +240,10 @@ class PlateModel:
             gmsh.model.geo.synchronize()
             gmsh.model.geo.removeAllDuplicates()
             gmsh.model.geo.synchronize()
+
         elif newLoad.case == 'nodes':
             pass
+
         elif newLoad.case == 'point':
 
             newPoint = newLoad.outlineCoords
@@ -242,8 +264,11 @@ class PlateModel:
         '''Method to delete the current mesh of the plateModel.'''
         self.mesh = None
 
+
 class Plate:
+
     def __init__(self, inputDict, isUnterZug=False, t=0):
+
         '''
         A plate object contains all characteristics regarding geometry and material.
 
@@ -259,6 +284,7 @@ class Plate:
         * **t = 0**: If the plate aims to model a downstand beam, thickness of the surrounding plate (default is 0) 
 
         '''
+
         self.outlineCoords = inputDict["outlineCoords"]
         self.thickness = inputDict["thickness"]
         self.body = inputDict["body"]
@@ -287,6 +313,7 @@ class Plate:
                                         [0,         0,   t**3*1/2]])
 
     def _plot(self, axGeometry):
+
         '''
         Plots a plate object in the axGeometry axis. \n
         Input: \n
@@ -294,6 +321,7 @@ class Plate:
         Return: \n
         *   -
         '''
+
         coords = self.outlineCoords
         axGeometry.plot(coords[:,0],coords[:,1], color='gray')
         if self.isUnterZug:
@@ -301,6 +329,7 @@ class Plate:
 
 class Wall:
     def __init__(self, inputDict, verticalDisplacement = False):
+
         '''
         A wall object contains all characteristics regarding geometry and support conditions. 
 
@@ -314,6 +343,7 @@ class Wall:
             - "support": Numpy array of length 3, each element is either 1 or 0 to block or leave free the relative degree of freedom. 
 
         '''
+
         self.outlineCoords = inputDict["outlineCoords"]
         self.support = inputDict["support"]
         self.thickness = inputDict["thickness"]
@@ -329,6 +359,7 @@ class Wall:
                 Exception('Please define wall body and high')
 
     def _plot(self, axGeometry):
+
         '''
         Plots a wall object in the axGeometry axis. \n
         Input: \n
@@ -336,6 +367,7 @@ class Wall:
         Return: \n
         *   -
         '''
+
         coords = self.outlineCoords
         axGeometry.plot(coords[:,0],coords[:,1], color='g')
         for i in range(0, coords.shape[0]-1):
@@ -361,7 +393,9 @@ class Wall:
             axGeometry.plot(np.array([l1[1,0],l2[1,0]]),np.array([l1[1,1],l2[1,1]]), color='g', linewidth = linWidth)
 
 class Column:
+
     def __init__(self, inputDict, isInPlate = False):
+
         '''
         A column object contains all characteristics regarding geometry and support conditions. 
 
@@ -376,6 +410,7 @@ class Column:
         * **isInPlate = False**: Boolean, True if the columns is positioned inside a plate (default is False) .
 
         '''
+
         self.outlineCoords = inputDict["outlineCoords"]
         self.support = inputDict["support"]
         self.width = inputDict["width"]
@@ -520,7 +555,9 @@ class StandardConcrete(Concrete):
         
 
 class CrossSection:
+
     def __init__(self, A, Iy, Iz, b,h):
+
         '''
         A crossSection object contains all the geometrical information used in downstand beams. 
 
@@ -534,15 +571,18 @@ class CrossSection:
         * **b**: Width of the structural element.
         * **h** : High of the structural element.
 
-        '''        
+        '''    
+
         self.A = A
         self.Iy = Iy
         self.Iz = Iz
         self.width = b
         self.thickness = h
 
+
 class Load:
-    def __init__(self,case, magnitude):
+    
+    def __init__(self, case, magnitude):
         '''
         A load object contains all information which define a load, including magnitude, type and position. 
 
@@ -554,9 +594,11 @@ class Load:
             - "line": Line load, outline is to be additionally defined. 
             - "area": Constant load distributed on the entire structure.
             - "point": Concentrated load, position is to be additionally defined. 
-        * **magnitude**: Numpy array of length 3, each element define the magnitude of the applied load for the relative degree of freedom.
+        * **magnitude**: Numpy array of length 3, each element define the magnitude of the applied 
+                         load for the relative degree of freedom.
 
-        '''        
+        '''
+
         self.magnitude = magnitude
         self.case=case
         self.outlineCoords = np.array([])
