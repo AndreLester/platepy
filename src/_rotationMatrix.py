@@ -1,24 +1,38 @@
 import numpy as np
 from scipy.linalg import block_diag # to create the rotation matrix
+
 def rotMatrix(theta):
+
     '''
         creates rotation matrix of angle theta for a single node
     '''
+    
+    # An 'ugly' temporary? hack
+    if isinstance(theta, np.ndarray):
+        theta = theta[0]
+
     A = np.array([[1., 0, 0],
                   [0, np.cos(theta), -np.sin(theta)],
                   [0, np.sin(theta), np.cos(theta)]], dtype=float)
     return A
 
 def timo_rotMatrix(theta):
+
     '''
         creates rotation matrix of angle theta for a single node
     '''
+
+    # An 'ugly' temporary? hack
+    if isinstance(theta, np.ndarray):
+        theta = theta[0]
+    
     A = np.array([[np.cos(theta), -np.sin(theta),  0],
                   [np.sin(theta),  np.cos(theta),  0],
                   [0,              0,              1]], dtype=float)
     return A
 
 def getRotationMatrix(elementType, elemNodesRotations):
+
     nNodes = elemNodesRotations.size
     Ri = []
     RiInit = False

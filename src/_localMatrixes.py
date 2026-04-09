@@ -1,6 +1,6 @@
 import numpy as np
-from ._shapeFunctions import *
-from ._getGaussQuadrature import *
+from _shapeFunctions import *
+from _getGaussQuadrature import *
 
 def GetLocalMatrix(xi, yi, Df,Dc, p,nNodes, elementType, elementIntegration):
     ''' Input/Output descriptions

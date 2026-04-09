@@ -1,5 +1,6 @@
 import numpy as np
-from ._getGaussQuadrature import *
+from _getGaussQuadrature import *
+
 def getShapeFunctionForElementType(elementType,ri, si, xi, yi):
     nNodes = len(xi)
     if (elementType=='DB' and nNodes == 4) or (elementType == 'timo'):

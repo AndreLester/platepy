@@ -9,12 +9,12 @@ from scipy.sparse.linalg import spsolve
 from scipy.sparse import csr_matrix
 from scipy.integrate import trapezoid
 # Import custom functions from other modules
-from ._shapeFunctions import *
-from ._localMatrixes import *
-from ._internalForces import *
-from ._slicingFunctions import *
-from ._rotationMatrix import *
-from .displayModel import plotInputGeometry
+from _shapeFunctions import *
+from _localMatrixes import *
+from _internalForces import *
+from _slicingFunctions import *
+from _rotationMatrix import *
+from displayModel import plotInputGeometry
 import gmsh
 # for debug purposes
 from tqdm import tqdm
