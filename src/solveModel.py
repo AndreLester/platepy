@@ -19,57 +19,70 @@ import gmsh
 # for debug purposes
 from tqdm import tqdm
 
-def solveModel(self, resultsScales = (1, 1, 1),\
-    internalForcePosition = 'center', smoothedValues = False, computeMoments=True, kBendingResistance = 1):
-    ''' Given a `PlateModel` object with an initialized mesh, this function computes displacements, rotations and internal forces at
-        each node.
-        ~~~~~~~~~~~~~~~~~~~
-        INPUT
-        ~~~~~~~~~~~~~~~~~~~
-        * **self**: `PlateModel` object. 
-        * **resultsScales = (1e-3, 1, 1)**: Before being displayed the computed displacements are multiplied by resultsScales[0], the computed beding moments are multiplied by resultsScales[1]
-            and the shear forces by resultsScales[2]. 
-        * **internalForcePosition = 'center'**: String defining the desired position where the internal forces should be computed.
-        Possible values are "center" (default), "nodes" and "intPoints" for the positions used in the Gauss quadrature.
-        * **smoothedValues = False**: Experimental. If True, the values of the shear forces by displacement based elements are smoothed according to
-        the values at the Gauss points. 
-        * **computeMoments = True**: Deactivates the computation of internal forces. For debug purposes. 
-        * **kBendingResistance = 1**: 1/tan(alpha), to compute the plate bending resistance according to the SIA 262 swiss norm. 
-        ~~~~~~~~~~~~~~~~~~~
-        RETURN
-        ~~~~~~~~~~~~~~~~~~~
-        * **ResultsDictionary**: Dictionary with `Result` objects.
+
+def solveModel(model, resultsScales = (1, 1, 1), internalForcePosition = 'center', 
+               smoothedValues = False, computeMoments=True, kBendingResistance = 1):
+    
+    ''' 
+    Given a `PlateModel` object with an initialized mesh, this function computes displacements, 
+    rotations and internal forces at each node.
+
+    ~~~~~~~~~~~~~~~~~~~
+    INPUT
+    ~~~~~~~~~~~~~~~~~~~
+    * **model**: `PlateModel` object. 
+    * **resultsScales = (1e-3, 1, 1)**: Before being displayed the computed displacements are 
+                                        multiplied by resultsScales[0], the computed beding moments are 
+                                        multiplied by resultsScales[1] and the shear forces by 
+                                        resultsScales[2]. 
+    * **internalForcePosition = 'center'**: String defining the desired position where the internal forces 
+                                            should be computed. Possible values are "center" (default), 
+                                            "nodes" and "intPoints" for the positions used in the Gauss quadrature.
+    * **smoothedValues = False**: Experimental. If True, the values of the shear forces by displacement based 
+                                  elements are smoothed according to the values at the Gauss points. 
+    * **computeMoments = True**: Deactivates the computation of internal forces. For debug purposes. 
+    * **kBendingResistance = 1**: 1/tan(alpha), to compute the plate bending resistance according to the SIA 262 swiss norm. 
+
+    ~~~~~~~~~~~~~~~~~~~
+    RETURN
+    ~~~~~~~~~~~~~~~~~~~
+    * **ResultsDictionary**: Dictionary with `Result` objects.
+
     '''
 
-    # chose the right solving algorithm based on the presence or not of downstand beams
-    if len(self.downStandBeams)>0:
-        solveMethod='cho'
+    # Choose the right solving algorithm based on the presence or not of downstand beams
+    if len(model.downStandBeams) > 0:
+        solveMethod = 'cho'
     else:
         solveMethod = 'sparse'
 
     # re-import mesh information
-    nodes=self.mesh.nodesArray
+    nodes=model.mesh.nodesArray
     nNodesTotal = nodes.shape[0]
-    nodesRotations = self.mesh.nodesRotations # both dataframes
-    elementsList = self.mesh.elementsList
-    BCs = self.mesh.BCs
+    nodesRotations = model.mesh.nodesRotations # both dataframes
+    elementsList = model.mesh.elementsList
+    BCs = model.mesh.BCs
     nGDofs = nodes.shape[0]*3
-    p=self.loads[0]   
-    platesList = self.plates
-    downStandBeamsList = self.downStandBeams
-    modelMesh = self.mesh
+    p=model.loads[0]   
+    platesList = model.plates
+    downStandBeamsList = model.downStandBeams
+    modelMesh = model.mesh
 
     # for elastic vertical displacement of walls (experimental)
-    elasticallySupportedNodes = self.mesh.elasticallySupportedNodes
-    if len(self.walls)>0:
-        if self.walls[0].isElasticallySupported:
-            wallStiffness = self.walls[0].body.eModule / self.walls[0].high * self.walls[0].thickness *0.004 # what is the characteristic length?
+    elasticallySupportedNodes = model.mesh.elasticallySupportedNodes
+    if len(model.walls) > 0:
+        if model.walls[0].isElasticallySupported:
+            # what is the characteristic length?
+            wallStiffness = model.walls[0].body.eModule / model.walls[0].high * model.walls[0].thickness * 0.004 
         else:
             wallStiffness = None
     else:
         wallStiffness = None
 
-    sparseGlobalMatrix, sparseForceGlobal, discartedDOFs = _getGlobalStiffnesAndForce(elementsList,platesList,downStandBeamsList, nodesRotations, modelMesh,p, nNodesTotal, elasticallySupportedNodes,wallStiffness)
+    sparseGlobalMatrix, sparseForceGlobal, discartedDOFs = _getGlobalStiffnesAndForce(
+        elementsList,platesList,downStandBeamsList, nodesRotations, 
+        modelMesh,p, nNodesTotal, elasticallySupportedNodes,wallStiffness
+    )
     elementType = elementsList[0].type
     fDofsInt, rDofsBool,keepedDisplacements = _getFreeDOFvector(BCs, nGDofs,elementType,discartedDOFs)
 
@@ -78,10 +91,10 @@ def solveModel(self, resultsScales = (1, 1, 1),\
     fVecFree = sparseForceGlobal[fDofsInt]
 
     if solveMethod == 'cho':
-        AmatList = self.mesh.AmatList
+        AmatList = model.mesh.AmatList
         A = _assembleSystemMFCmatrix(AmatList)
         try:
-            A=A[:,fDofsInt]
+            A = A[:,fDofsInt]
         except:
             raise ValueError('Please change solveMethod from "cho" to "sparse"')
 
@@ -100,12 +113,12 @@ def solveModel(self, resultsScales = (1, 1, 1),\
     elif solveMethod == 'sparse':
         Uf = spsolve(kMatFree,fVecFree)
         Uf=Uf.reshape(-1,1)
-        uGlob=np.zeros((nGDofs,1))
+        uGlob = np.zeros((nGDofs,1))
         uGlob[fDofsInt]=Uf
 
     uGlobSparse = csr_matrix(uGlob)
     globalForce = (sparseGlobalMatrix*uGlobSparse).toarray()
-    nodes = self.mesh.nodesArray.to_numpy()
+    nodes = model.mesh.nodesArray.to_numpy()
     if solveMethod == 'cho':
         uDownStandBeam = uGlob
         uGlob = uGlob[:-nConstraints,:]
@@ -126,15 +139,17 @@ def solveModel(self, resultsScales = (1, 1, 1),\
     resultsDictionary['vDisp'] = _Result(outPos[:,0], outPos[:,1], vDisp, resultsScales[0])
     resultsDictionary['xRot'] = _Result(outPos[:,0], outPos[:,1], values[:,1], resultsScales[0])
     resultsDictionary['yRot'] = _Result(outPos[:,0], outPos[:,1], values[:,2], resultsScales[0])
-    self.resultsInformation = ResultsInformation()
-    self.resultsInformation.uGlobPlate = uGlob
+    model.resultsInformation = ResultsInformation()
+    model.resultsInformation.uGlobPlate = uGlob
 
     #compute internal forces
     if computeMoments:
-        nodesArray = self.mesh.nodesArray
-        mitcList = self.mesh.plateElementsList
+        nodesArray = model.mesh.nodesArray
+        mitcList = model.mesh.plateElementsList
 
-        bendingMoments, shearForces, internalForcesPositions = getInternalForces(mitcList,uGlob,internalForcePosition,nodesArray, smoothedValues)
+        bendingMoments, shearForces, internalForcesPositions = getInternalForces(
+            mitcList,uGlob,internalForcePosition,nodesArray, smoothedValues
+        )
         xPos = internalForcesPositions[:,0]
         yPos = internalForcesPositions[:,1]
 
@@ -155,17 +170,23 @@ def solveModel(self, resultsScales = (1, 1, 1),\
         resultsDictionary['Mx_Rd_max'] = _Result(xPos,yPos,bendingResistance[:,0,2], resultsScales[1])
         resultsDictionary['My_Rd_max'] = _Result(xPos,yPos,bendingResistance[:,1,2], resultsScales[1])
 
-        if len(self.downStandBeams) > 0:
-            uzList = self.downStandBeams[0].elementsList
-            Nforces, Vforces, Mforces, internalForcesPositions = getInternalForcesDSB(uzList,uDownStandBeam,internalForcePosition, self.downStandBeams[0])
+        if len(model.downStandBeams) > 0:
+            uzList = model.downStandBeams[0].elementsList
+            Nforces, Vforces, Mforces, internalForcesPositions = getInternalForcesDSB(
+                uzList,uDownStandBeam,internalForcePosition, model.downStandBeams[0]
+            )
             resultsDictionary['N_DSB'] = _Result(internalForcesPositions[:,0], internalForcesPositions[:,1], Nforces, resultsScales[2])
             resultsDictionary['V_DSB'] = _Result(internalForcesPositions[:,0], internalForcesPositions[:,1], Vforces, resultsScales[2])
-            resultsDictionary['N_DSB'] = _Result(internalForcesPositions[:,0], internalForcesPositions[:,1], Mforces, resultsScales[1])
+            resultsDictionary['M_DSB'] = _Result(internalForcesPositions[:,0], internalForcesPositions[:,1], Mforces, resultsScales[1])
 
-    self.resultsInformation.resultsDictionary = resultsDictionary
+    model.resultsInformation.resultsDictionary = resultsDictionary
+
     return resultsDictionary
 
-def _getGlobalStiffnesAndForce(elementsList,platesList,downStandBeamsList, nodesRotations, modelMesh,p,nNodesTotal, elasticallySupportedNodes,wallStiffness):
+
+def _getGlobalStiffnesAndForce(elementsList,platesList,downStandBeamsList, nodesRotations, 
+                               modelMesh,p,nNodesTotal, elasticallySupportedNodes,wallStiffness):
+    
     ''' Computes global stiffness matrix and global force matrixes in sparse form.\n
         Input: \n
             * elementsList: List of element objects. \n
@@ -182,6 +203,7 @@ def _getGlobalStiffnesAndForce(elementsList,platesList,downStandBeamsList, nodes
             * sparseForceGlobal: Scipy sparse matrix of the system's force vector.
             * discartedDOFs: List of the degrees of freedom removed (in the case of the MITC-9 element, since only 8 vertical displacements are used).
     '''
+
     nSparseData = len(elementsList)*(9*3)**2
     rowsForStiffnessSparseMatrix = np.zeros(nSparseData, dtype=int)
     columnsForStiffnessSparseMatrix = np.zeros(nSparseData, dtype=int)
@@ -194,7 +216,7 @@ def _getGlobalStiffnesAndForce(elementsList,platesList,downStandBeamsList, nodes
     nElements = len(elementsList)
     discartedDOFs = np.zeros(nElements, dtype=int)
     
-    print('Assembling stiffness matrix')
+    #print('Assembling stiffness matrix')
     for k,element in enumerate(tqdm(elementsList)):
         elementType=element.type
         elementIntegration = element.integration
@@ -270,18 +292,23 @@ def _getGlobalStiffnesAndForce(elementsList,platesList,downStandBeamsList, nodes
     # create global matrixes
     sparseGlobalMatrix = csr_matrix((dataForStiffnessSparseMatrix,(rowsForStiffnessSparseMatrix,columnsForStiffnessSparseMatrix)))
     sparseForceGlobal = csr_matrix((dataForForceSparseMatrix,(rowsForForceSparseMatrix,columnsForForceSparseMatrix)), shape=(nNodesTotal*3,1))
+
     return sparseGlobalMatrix, sparseForceGlobal, discartedDOFs
 
+
 def _getLineLoadForceVector(p,nSparseData,elemNodesRotations):
-    ''' Computes information required to create the sparse force vector in case of line loads. \n
-        Input: \n
-            * p: Load object. \n
-            * nSparseData: Total number of the non-zero entries in the global stiffness matrix. = len(elementsList)*(9*3)**2. \n
-            * elemNodesRotations: Rotation of the node appertaining at the element. \n
-        Return: \n
-            * rowsForForceSparseMatrix: numpy vector with the indexes of the entries in dataForForceSparseMatrix. \n
-            * dataForForceSparseMatrix: numpy vector with the values of the entries in the global sparse force vector. \n
+
+    ''' 
+    Computes information required to create the sparse force vector in case of line loads.
+    Input:
+        * p: Load object.
+        * nSparseData: Total number of the non-zero entries in the global stiffness matrix. = len(elementsList)*(9*3)**2.
+        * elemNodesRotations: Rotation of the node appertaining at the element.
+    Return:
+        * rowsForForceSparseMatrix: numpy vector with the indexes of the entries in dataForForceSparseMatrix.
+        * dataForForceSparseMatrix: numpy vector with the values of the entries in the global sparse force vector.
     '''
+
     elements1DList = p.elements1DList
     rowsForForceSparseMatrix = np.zeros(nSparseData, dtype=int)
     columnsForForceSparseMatrix = np.zeros(nSparseData, dtype=int)
@@ -328,15 +355,19 @@ def _getLineLoadForceVector(p,nSparseData,elemNodesRotations):
         startIndexForce += kCoeff.size
     return rowsForForceSparseMatrix,dataForForceSparseMatrix
 
+
 def _getNodesLoadForceVector(p, nSparseData):
-    ''' Computes information required to create the sparse force vector in case the user manually defines the node loads. \n
-        Input: \n
-            * p: Load object. \n
-            * nSparseData: Total number of the non-zero entries in the global stiffness matrix. = len(elementsList)*(9*3)**2. \n
-        Return: \n
-            * rowsForForceSparseMatrix: numpy vector with the indexes of the entries in dataForForceSparseMatrix. \n
-            * dataForForceSparseMatrix: numpy vector with the values of the entries in the global sparse force vector. \n
+
+    ''' 
+    Computes information required to create the sparse force vector in case the user manually defines the node loads.
+    Input:
+        * p: Load object. 
+        * nSparseData: Total number of the non-zero entries in the global stiffness matrix. = len(elementsList)*(9*3)**2. 
+    Return: 
+        * rowsForForceSparseMatrix: numpy vector with the indexes of the entries in dataForForceSparseMatrix. 
+        * dataForForceSparseMatrix: numpy vector with the values of the entries in the global sparse force vector.
     '''
+
     rowsForForceSparseMatrix = np.zeros(nSparseData, dtype=int)
     columnsForForceSparseMatrix = np.zeros(nSparseData, dtype=int)
     dataForForceSparseMatrix = np.zeros(nSparseData)
@@ -350,17 +381,21 @@ def _getNodesLoadForceVector(p, nSparseData):
         rowsForForceSparseMatrix[startIndexForce:startIndexForce+3] = range(nodeTag*3,nodeTag*3+3)
         dataForForceSparseMatrix[startIndexForce:startIndexForce+3] = node[1:]
         startIndexForce += 3
+
     return rowsForForceSparseMatrix,dataForForceSparseMatrix 
 
 def _getPointLoadForceVector(p,nSparseData):
-    ''' Computes information required to create the sparse force vector in case of line loads. \n
-        Input: \n
-            * p: Load object. \n
-            * nSparseData: Total number of the non-zero entries in the global stiffness matrix. = len(elementsList)*(9*3)**2. \n
-        Return: \n
-            * rowsForForceSparseMatrix: numpy vector with the indexes of the entries in dataForForceSparseMatrix. \n
-            * dataForForceSparseMatrix: numpy vector with the values of the entries in the global sparse force vector. \n
+
+    ''' 
+    Computes information required to create the sparse force vector in case of line loads. 
+    Input: 
+        * p: Load object.
+        * nSparseData: Total number of the non-zero entries in the global stiffness matrix. = len(elementsList)*(9*3)**2. 
+    Return: 
+        * rowsForForceSparseMatrix: numpy vector with the indexes of the entries in dataForForceSparseMatrix. 
+        * dataForForceSparseMatrix: numpy vector with the values of the entries in the global sparse force vector.
     '''
+
     nodeWithLoad = p.pointLoadNode
     fLocal = p.magnitude
     rowsForForceSparseMatrix = np.zeros(nSparseData, dtype=int)
@@ -387,7 +422,9 @@ def _getPointLoadForceVector(p,nSparseData):
 
     return rowsForForceSparseMatrix,dataForForceSparseMatrix
 
+
 def _getFreeDOFvector(BCs, nGDofs,elementType,discartedDOFs):
+
     ''' Constructs the vector with the not-restrained degrees of freedom.\n
         Input: \n
             * BCs: n x 4 numpy array. n is the number of restrained nodes, the first column is the node tag, the other column represent the condition of the three DOFs (1 is blocked, 0 is free). \n
@@ -399,6 +436,7 @@ def _getFreeDOFvector(BCs, nGDofs,elementType,discartedDOFs):
             * rDofsBool: Numpy boolean array of length nGDofs. True if the relative DOF is restrained. \n
             * keepedDisplacements: DOFs which are not discarted in discartedDOFs.
     '''
+
     rDofsBool = np.zeros((nGDofs),dtype=bool)
 
     if discartedDOFs[0]!=0:
@@ -422,13 +460,17 @@ def _getFreeDOFvector(BCs, nGDofs,elementType,discartedDOFs):
 
     return fDofsInt, rDofsBool,keepedDisplacements
 
+
 def _assembleSystemMFCmatrix(AmatList):
-    ''' Constructs the MFC matrix for the system. \n
-        Input: \n
-            * AmatList: List of MFC matrix for the indivudual downstand beams. \n
-        Return: \n
-            * A: System MFC matrix of shape (nConstraints x nGDOFs)
+
+    ''' 
+    Constructs the MFC matrix for the system.
+    Input:
+        * AmatList: List of MFC matrix for the indivudual downstand beams.
+    Return:
+        * A: System MFC matrix of shape (nConstraints x nGDOFs)
     '''
+    
     A = []
     for myA in AmatList:
         if len(A) == 0:
@@ -437,16 +479,22 @@ def _assembleSystemMFCmatrix(AmatList):
             A= np.concatenate((A, myA))
     return A
 
+
 def _getMmatrixAndRightSide(A, kMatFree,fVecFree):
-    ''' Returns left and right sides of the system of equations to solve. \n
-            Input: \n
-                * A: System MFC matrix of shape (nConstraints x nGDOFs). \n
-                * kMatFree: Scipy sparse matrix of the system's stiffness. \n
-                * fVecFree: Scipy sparse matrix of the system's force vector. \n
-            Return: \n
-                * M: Numpy matrix for the left side of the equation, has shape (nGDOFs + nConstraints,nGDOFs + nConstraints ). \n
-                * rightSide: Numpy matrix for the right side of the equation, has shape (nGDOFs + nConstraints,). \n
+
+    ''' 
+    Returns left and right sides of the system of equations to solve.
+    Input: 
+        * A: System MFC matrix of shape (nConstraints x nGDOFs). 
+        * kMatFree: Scipy sparse matrix of the system's stiffness. 
+        * fVecFree: Scipy sparse matrix of the system's force vector. 
+    Return: 
+        * M: Numpy matrix for the left side of the equation, has 
+             shape (nGDOFs + nConstraints,nGDOFs + nConstraints ). 
+        * rightSide: Numpy matrix for the right side of the equation, 
+                     has shape (nGDOFs + nConstraints,). 
     '''
+
     nConstraints = A.shape[0]
     nFreeDofs = A.shape[1]
     kMatFreeNp = kMatFree.toarray()
@@ -458,14 +506,20 @@ def _getMmatrixAndRightSide(A, kMatFree,fVecFree):
 
     return M, rightSide
 
+
 def _getBendingResistance(bendingMoments,kBendingResistance):
-    '''Computes rquired bending resistance according to SIA 262.\n
-        Input: \n
-            * bendingMoments: Numpy array of shape (n evaluation points, 3). First column: mx, second column: my, third column: mxy. \n
-            * kBendingResistance: 1/tan(alpha) according to SIA 262. \n
-        Return: \n
-            * bendingResistance: Numpy array of shape(n evaluation points,3,3). Dimension 2 are mx, my, mxy. Dimension 3 are positive resistance, negative resistance, maximal resistance.
+
+    '''Computes rquired bending resistance according to SIA 262. 
+        Input: 
+            * bendingMoments: Numpy array of shape (n evaluation points, 3). 
+                              First column: mx, second column: my, third column: mxy.
+            * kBendingResistance: 1/tan(alpha) according to SIA 262. 
+        Return: 
+            * bendingResistance: Numpy array of shape(n evaluation points,3,3). 
+                                 Dimension 2 are mx, my, mxy. Dimension 3 are 
+                                 positive resistance, negative resistance, maximal resistance.
     '''
+
     bendingResistance = np.zeros((bendingMoments.shape[0],2,3))
     bendingResistance[:,0,0] = bendingMoments[:,0] + kBendingResistance*np.abs(bendingMoments[:,2])
     bendingResistance[:,1,0] = bendingMoments[:,1] + 1/kBendingResistance*np.abs(bendingMoments[:,2])
@@ -473,10 +527,14 @@ def _getBendingResistance(bendingMoments,kBendingResistance):
     bendingResistance[:,1,1] = -bendingMoments[:,1] + 1/kBendingResistance*np.abs(bendingMoments[:,2])
     bendingResistance[:,0,2] = np.abs(bendingMoments[:,0]) + kBendingResistance*np.abs(bendingMoments[:,2])
     bendingResistance[:,1,2] = np.abs(bendingMoments[:,1]) + 1/kBendingResistance*np.abs(bendingMoments[:,2])
+
     return bendingResistance
 
-def computeBeamComponents(self, startCoord, endCoord, nEvaluationPoints,resultsScales = (1,1, 1),integrationWidth = 0, nIntegrationPoints =0):
-    '''Computes the results over a custom-defined line.
+def computeBeamComponents(self, startCoord, endCoord, nEvaluationPoints,
+                          resultsScales = (1,1, 1),integrationWidth = 0, nIntegrationPoints =0):
+    
+    '''
+    Computes the results over a custom-defined line.
 
     ~~~~~~~~~~~~~~~~~~~
     INPUT
@@ -500,6 +558,7 @@ def computeBeamComponents(self, startCoord, endCoord, nEvaluationPoints,resultsS
     * **shearForces**: (nPoints, 2) Numpy array containing Vx and Vy for each evaluation point.
     * **arrayEvaluationPoints**: (nPoints, 2) Numpy array containing x and y coordinates of each evaluation point.
     '''
+
     uGlob = self.resultsInformation.uGlobPlate
     elementsList = self.mesh.elementsList
     arrayEvaluationPoints = np.zeros((nEvaluationPoints,2))
@@ -511,7 +570,9 @@ def computeBeamComponents(self, startCoord, endCoord, nEvaluationPoints,resultsS
 
     if integrationWidth ==0:
         for k,evaluationPoint in enumerate(arrayEvaluationPoints):
-            elementTaggetEl, elementTypegetEl, nodeTagsgetEl, ugetEl, vgetEl, wgetEl = gmsh.model.mesh.getElementByCoordinates(evaluationPoint[0],evaluationPoint[1],0, dim=2)
+            elementTaggetEl, elementTypegetEl, nodeTagsgetEl, ugetEl, vgetEl, wgetEl = gmsh.model.mesh.getElementByCoordinates(
+                evaluationPoint[0],evaluationPoint[1],0, dim=2
+            )
             element = self.mesh.getElementByTagDictionary[elementTaggetEl]
             plateOfTheElement = element.whichPlate
             elementType = element.type
@@ -557,7 +618,9 @@ def computeBeamComponents(self, startCoord, endCoord, nEvaluationPoints,resultsS
             integrationShearForces = np.zeros((nIntegrationPoints,2))
 
             for j, integrationPoint in enumerate(arrayIntegrationPoints):
-                elementTaggetEl, elementTypegetEl, nodeTagsgetEl, ugetEl, vgetEl, wgetEl = gmsh.model.mesh.getElementByCoordinates(integrationPoint[0],integrationPoint[1],0, dim=2)
+                elementTaggetEl, elementTypegetEl, nodeTagsgetEl, ugetEl, vgetEl, wgetEl = gmsh.model.mesh.getElementByCoordinates(
+                    integrationPoint[0],integrationPoint[1],0, dim=2
+                )
                 element = self.mesh.getElementByTagDictionary[elementTaggetEl]
                 plateOfTheElement = element.whichPlate
                 elementType = element.type
@@ -600,7 +663,9 @@ def computeBeamComponents(self, startCoord, endCoord, nEvaluationPoints,resultsS
 
     return bendingMoments, shearForces, arrayEvaluationPoints
 
+
 def evaluateAtPoints(self, coords, displayPoints = False):
+
     '''
     Computes the displacement, rotation and internal forces at the location contained in coords.
 
@@ -619,6 +684,7 @@ def evaluateAtPoints(self, coords, displayPoints = False):
     * **bendingMoments**: (nPoints, 3) Numpy array containing Mx, My and Mxy for each evaluation point.
     * **shearForces**: (nPoints, 2) Numpy array containing Vx and Vy for each evaluation point.
     '''
+
     uGlob = self.resultsInformation.uGlobPlate
     nEvaluationPoints = coords.shape[0]
     elementsList = self.mesh.elementsList
@@ -666,20 +732,25 @@ def evaluateAtPoints(self, coords, displayPoints = False):
         shearForces[k,0:2] = np.matmul(Dc, np.matmul(Bs, vLoc))[:,0]*changeSign
 
     if displayPoints:
-        fig,outAx = plotInputGeometry(self)
+        fig, outAx = plotInputGeometry(self)
         for k,evaluationPoint in enumerate(coords):
             outAx.scatter(evaluationPoint[0],evaluationPoint[1], facecolor='b', marker='.')
     return verticalDisplacements,bendingMoments, shearForces
 
+
 class _Schnitt:
-    def __init__(self, bendingMoments, shearForces,verticalDisplacements, arrayEvaluationPoints):
-        ''' Class containing the results (displacements and internal forces) along a line cut.\n
-        Input: \n
-        * bendingMoments: Numpy array of shape (nEvaluationPoints, 3) \n
-        * shearForces: Numpy array of shape (nEvaluationPoints, 2) \n
-        * verticalDisplacements: Numpy array of shape (nEvaluationPoints, 1) \n
-        * arrayEvaluationPoints: Numpy array of shape (nEvaluationPoints, 2) with the x y coordinates of the evaluation points. \n
+
+    def __init__(self, bendingMoments, shearForces, verticalDisplacements, arrayEvaluationPoints):
+
+        ''' 
+        Class containing the results (displacements and internal forces) along a line cut.
+        Input: 
+        * bendingMoments: Numpy array of shape (nEvaluationPoints, 3) 
+        * shearForces: Numpy array of shape (nEvaluationPoints, 2) 
+        * verticalDisplacements: Numpy array of shape (nEvaluationPoints, 1) 
+        * arrayEvaluationPoints: Numpy array of shape (nEvaluationPoints, 2) with the x y coordinates of the evaluation points. 
         '''
+
         self.bendingMoments = bendingMoments
         self.shearForces = shearForces
         self.verticalDisplacements = verticalDisplacements
@@ -687,20 +758,25 @@ class _Schnitt:
 
 
 class _Result:
+
     '''
-    Attributes: \n
+    Attributes: 
     * iMax, zMax
     * iMin, zMin
     * zMaxScaled, zMinScaled, zAbsScaled
     '''
+
     def __init__(self,x,y,z, resultScale):
-        '''Class object to store results \n
-        Inputs: \n
-        * x \n
-        * y \n
-        * z \n
-        * resultScale: Scaling factor for the display of the result. \n
+
         '''
+        Class object to store results 
+        Inputs: 
+        * x 
+        * y 
+        * z 
+        * resultScale: Scaling factor for the display of the result. 
+        '''
+
         self.x = x
         self.y = y
         self.z = z
@@ -717,10 +793,15 @@ class _Result:
         self.zAbsScaled = np.max(zAbs)*resultScale
         self.resultScale = resultScale
 
+
 class ResultsInformation:
+
     def __init__(self):
-        '''Stores all kind of object regarding results.
+
         '''
+        Stores all kind of object regarding results.
+        '''
+
         self.resultsDictionary = None
         self.bendingMoments = None
         self.internalForcesPositions = None
